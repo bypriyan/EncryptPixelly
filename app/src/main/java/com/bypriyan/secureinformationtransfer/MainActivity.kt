@@ -21,6 +21,10 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, EncryptActivity::class.java))
         }
 
+        binding.decryptBtn.setOnClickListener {
+            startActivity(Intent(this, DecryptActivity::class.java))
+        }
+
 
     }
 }

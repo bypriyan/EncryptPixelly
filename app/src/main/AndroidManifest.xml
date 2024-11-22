@@ -16,6 +16,9 @@
         android:theme="@style/Theme.SecureInformationTransfer"
         tools:targetApi="31">
         <activity
+            android:name=".DecryptActivity"
+            android:exported="false" />
+        <activity
             android:name=".EncryptActivity"
             android:exported="false" />
         <activity

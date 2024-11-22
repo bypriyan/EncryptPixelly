@@ -37,7 +37,7 @@ class EncryptActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         // Set up algorithm spinner
-        val algorithms = listOf("LSB", "DCT", "Custom Algorithm 1", "Custom Algorithm 2")
+        val algorithms = listOf("LSB", "DCT")
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, algorithms)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.algorithmSpinner.adapter = adapter
@@ -55,6 +55,7 @@ class EncryptActivity : AppCompatActivity() {
             if (result.resultCode == RESULT_OK && result.data != null) {
                 selectedImageUri = result.data?.data
                 binding.selecterIng.setImageURI(selectedImageUri)
+                binding.lin.visibility = View.GONE
             }
         }
 
