@@ -1,18 +1,19 @@
 package com.bypriyan.secureinformationtransfer
 
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
-import androidx.activity.enableEdgeToEdge
+import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import com.bypriyan.secureinformationtransfer.databinding.ActivityDecryptBinding
+import java.io.InputStream
 
 class DecryptActivity : AppCompatActivity() {
 
@@ -32,30 +33,36 @@ class DecryptActivity : AppCompatActivity() {
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.algorithmSpinner.adapter = adapter
 
-        binding.algorithmSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
-                selectedAlgorithm = algorithms[position]
-            }
+        binding.algorithmSpinner.onItemSelectedListener =
+            object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(
+                    parent: AdapterView<*>?,
+                    view: View?,
+                    position: Int,
+                    id: Long
+                ) {
+                    selectedAlgorithm = algorithms[position]
+                }
 
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
+                override fun onNothingSelected(parent: AdapterView<*>?) {}
+            }
 
         // Set up image picker
-        pickImageLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == RESULT_OK && result.data != null) {
-                selectedImageUri = result.data?.data
-                binding.selecterIng.setImageURI(selectedImageUri)
-                binding.lin.visibility = View.GONE
+        pickImageLauncher =
+            registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+                if (result.resultCode == RESULT_OK && result.data != null) {
+                    selectedImageUri = result.data?.data
+                    binding.selecterIng.setImageURI(selectedImageUri)
+                    binding.lin.visibility = View.GONE
+                }
             }
-        }
 
         // Button to select an image
         binding.selectImg.setOnClickListener { openGallery() }
 
-        binding.decryptBtn.setOnClickListener{
-
+        binding.decryptBtn.setOnClickListener {
+            decryptImage()
         }
-
     }
 
     private fun openGallery() {
@@ -65,4 +72,138 @@ class DecryptActivity : AppCompatActivity() {
         pickImageLauncher.launch(intent)
     }
 
+    private fun decryptImage() {
+        if (selectedImageUri == null) {
+            Toast.makeText(this, "Please select an image to decrypt", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        try {
+            val inputStream: InputStream? = contentResolver.openInputStream(selectedImageUri!!)
+            val decryptedMessage = when (selectedAlgorithm) {
+                "LSB" -> decryptUsingLSB(inputStream)
+                "DCT" -> decryptUsingDCT(inputStream)
+                else -> throw IllegalArgumentException("Unknown algorithm selected")
+            }
+
+            Log.d("decription", "decryptImage: ${decryptedMessage}")
+            binding.msgEt.setText(decryptedMessage)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "Failed to decrypt the image: ${e.message}", Toast.LENGTH_SHORT)
+                .show()
+        }
+    }
+
+    private fun decryptUsingLSB(inputStream: InputStream?): String {
+        if (inputStream == null) throw IllegalArgumentException("Input stream cannot be null")
+
+        val bitmap = BitmapFactory.decodeStream(inputStream)
+        val width = bitmap.width
+        val height = bitmap.height
+
+        val binaryData = StringBuilder()
+
+        loop@ for (y in 0 until height) {
+            for (x in 0 until width) {
+                val pixel = bitmap.getPixel(x, y)
+                val red = pixel shr 16 and 0xFF
+                val lsb = red and 1
+                binaryData.append(lsb)
+
+                // Stop extracting if we reach the end marker (optional, improve scalability)
+                if (binaryData.length % 8 == 0) {
+                    val char =
+                        binaryData.substring(binaryData.length - 8, binaryData.length).toInt(2)
+                            .toChar()
+                    if (char == '\u0000') break@loop
+                }
+            }
+        }
+
+        // Convert binary data to string
+        val message = StringBuilder()
+        for (i in 0 until binaryData.length step 8) {
+            val byteStr = binaryData.substring(i, i + 8)
+            val char = byteStr.toInt(2).toChar()
+            if (char == '\u0000') break // Stop if null character is found
+            message.append(char)
+        }
+
+        return message.toString()
+        Log.d("DEC", "decryptUsingLSB: $message")
+    }
+
+    private fun decryptUsingDCT(inputStream: InputStream?): String {
+        if (inputStream == null) throw IllegalArgumentException("Input stream cannot be null")
+
+        val bitmap = BitmapFactory.decodeStream(inputStream)
+        val width = bitmap.width
+        val height = bitmap.height
+
+        val binaryData = StringBuilder()
+
+        // Divide the image into 8x8 blocks
+        val blockSize = 8
+        for (y in 0 until height step blockSize) {
+            for (x in 0 until width step blockSize) {
+                // Extract 8x8 block
+                val block = Array(blockSize) { DoubleArray(blockSize) }
+                for (i in 0 until blockSize) {
+                    for (j in 0 until blockSize) {
+                        if (x + j < width && y + i < height) {
+                            val pixel = bitmap.getPixel(x + j, y + i)
+                            val gray = (pixel shr 16 and 0xFF) * 0.299 +
+                                    (pixel shr 8 and 0xFF) * 0.587 +
+                                    (pixel and 0xFF) * 0.114
+                            block[i][j] = gray
+                        }
+                    }
+                }
+
+                // Apply inverse DCT to the block
+                val dctCoefficients = performDCT(block)
+
+                // Extract encoded bits from specific DCT coefficients
+                // Example: Use the (1, 1) coefficient for simplicity
+                val bit =
+                    (dctCoefficients[1][1] % 2).toInt() // Retrieve LSB of a chosen coefficient
+                binaryData.append(bit)
+            }
+        }
+
+        // Convert binary data to string
+        val message = StringBuilder()
+        for (i in 0 until binaryData.length step 8) {
+            val byteStr = binaryData.substring(i, i + 8)
+            val char = byteStr.toInt(2).toChar()
+            if (char == '\u0000') break // Stop if null character is found
+            message.append(char)
+        }
+
+        return message.toString()
+    }
+
+    // Perform 2D DCT
+    private fun performDCT(block: Array<DoubleArray>): Array<DoubleArray> {
+        val N = block.size
+        val dctBlock = Array(N) { DoubleArray(N) }
+        for (u in 0 until N) {
+            for (v in 0 until N) {
+                var sum = 0.0
+                for (x in 0 until N) {
+                    for (y in 0 until N) {
+                        val coefficient = block[x][y] *
+                                Math.cos((2 * x + 1) * u * Math.PI / (2 * N)) *
+                                Math.cos((2 * y + 1) * v * Math.PI / (2 * N))
+                        sum += coefficient
+                    }
+                }
+                val cu = if (u == 0) 1.0 / Math.sqrt(2.0) else 1.0
+                val cv = if (v == 0) 1.0 / Math.sqrt(2.0) else 1.0
+                dctBlock[u][v] = 0.25 * cu * cv * sum
+            }
+        }
+        return dctBlock
+    }
 }
