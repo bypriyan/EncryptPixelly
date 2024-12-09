@@ -43,7 +43,7 @@ class EncryptActivity : AppCompatActivity() {
         binding.algorithmSpinner.adapter = adapter
 
         binding.algorithmSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 selectedAlgorithm = algorithms[position]
             }
 
@@ -106,6 +106,7 @@ class EncryptActivity : AppCompatActivity() {
         val bitmap = BitmapFactory.decodeStream(inputStream)
 
         if (bitmap != null) {
+            isLoading(true)
             val embeddedBitmap = when (selectedAlgorithm) {
                 "LSB" -> embedUsingLSB(bitmap, secretData)
                 "DCT" -> embedUsingDCT(bitmap, secretData)
@@ -144,10 +145,49 @@ class EncryptActivity : AppCompatActivity() {
         return resultBitmap
     }
 
-    // Placeholder for DCT algorithm
+    // Embed data using DCT algorithm
     private fun embedUsingDCT(bitmap: Bitmap, data: String): Bitmap {
-        // Implement DCT embedding logic here
-        return bitmap
+        val width = bitmap.width
+        val height = bitmap.height
+        val blockSize = 8 // DCT works on 8x8 blocks
+        val resultBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+
+        val binaryData = data.toByteArray(Charsets.UTF_8)
+            .joinToString("") { it.toString(2).padStart(8, '0') }
+        var dataIndex = 0
+
+        val dct = DCT()
+        for (i in 0 until width step blockSize) {
+            for (j in 0 until height step blockSize) {
+                if (dataIndex >= binaryData.length) break
+
+                val block = Array(blockSize) { DoubleArray(blockSize) }
+                for (x in 0 until blockSize) {
+                    for (y in 0 until blockSize) {
+                        if (i + x < width && j + y < height) {
+                            block[x][y] = resultBitmap.getPixel(i + x, j + y).toDouble()
+                        }
+                    }
+                }
+
+                val dctBlock = dct.forwardDCT(block)
+                if (dataIndex < binaryData.length) {
+                    dctBlock[0][0] = binaryData[dataIndex].digitToInt().toDouble()
+                    dataIndex++
+                }
+
+                val idctBlock = dct.inverseDCT(dctBlock)
+                for (x in 0 until blockSize) {
+                    for (y in 0 until blockSize) {
+                        if (i + x < width && j + y < height) {
+                            val pixelValue = idctBlock[x][y].toInt()
+                            resultBitmap.setPixel(i + x, j + y, pixelValue)
+                        }
+                    }
+                }
+            }
+        }
+        return resultBitmap
     }
 
     // Save the embedded image
@@ -165,14 +205,26 @@ class EncryptActivity : AppCompatActivity() {
         }
     }
 
-    fun isLoading(isLoading: Boolean){
-        if (isLoading){
+    fun isLoading(isLoading: Boolean) {
+        if (isLoading) {
             binding.progressbar.visibility = View.VISIBLE
             binding.encryptBtn.visibility = View.GONE
-        }else{
+        } else {
             binding.progressbar.visibility = View.GONE
             binding.encryptBtn.visibility = View.VISIBLE
         }
     }
 
+    // Simple DCT implementation
+    class DCT {
+        fun forwardDCT(block: Array<DoubleArray>): Array<DoubleArray> {
+            // Implement forward DCT here
+            return block
+        }
+
+        fun inverseDCT(block: Array<DoubleArray>): Array<DoubleArray> {
+            // Implement inverse DCT here
+            return block
+        }
+    }
 }

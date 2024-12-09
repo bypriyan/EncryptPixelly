@@ -86,8 +86,8 @@ class DecryptActivity : AppCompatActivity() {
                 else -> throw IllegalArgumentException("Unknown algorithm selected")
             }
 
-            Log.d("decription", "decryptImage: ${decryptedMessage}")
-            binding.msgEt.setText(decryptedMessage)
+            Log.d("Decryption", "Decrypted Message: $decryptedMessage")
+            binding.msgEt.setText(decryptedMessage.split("æ")[0])
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(this, "Failed to decrypt the image: ${e.message}", Toast.LENGTH_SHORT)
@@ -111,12 +111,10 @@ class DecryptActivity : AppCompatActivity() {
                 val lsb = red and 1
                 binaryData.append(lsb)
 
-                // Stop extracting if we reach the end marker (optional, improve scalability)
+                // Check if the last 8 bits form the termination marker
                 if (binaryData.length % 8 == 0) {
-                    val char =
-                        binaryData.substring(binaryData.length - 8, binaryData.length).toInt(2)
-                            .toChar()
-                    if (char == '\u0000') break@loop
+                    val lastByte = binaryData.substring(binaryData.length - 8, binaryData.length)
+                    if (lastByte == "00000000") break@loop
                 }
             }
         }
@@ -125,13 +123,12 @@ class DecryptActivity : AppCompatActivity() {
         val message = StringBuilder()
         for (i in 0 until binaryData.length step 8) {
             val byteStr = binaryData.substring(i, i + 8)
+            if (byteStr == "00000000") break // Stop at termination marker
             val char = byteStr.toInt(2).toChar()
-            if (char == '\u0000') break // Stop if null character is found
             message.append(char)
         }
 
         return message.toString()
-        Log.d("DEC", "decryptUsingLSB: $message")
     }
 
     private fun decryptUsingDCT(inputStream: InputStream?): String {
@@ -143,11 +140,9 @@ class DecryptActivity : AppCompatActivity() {
 
         val binaryData = StringBuilder()
 
-        // Divide the image into 8x8 blocks
         val blockSize = 8
-        for (y in 0 until height step blockSize) {
+        loop@ for (y in 0 until height step blockSize) {
             for (x in 0 until width step blockSize) {
-                // Extract 8x8 block
                 val block = Array(blockSize) { DoubleArray(blockSize) }
                 for (i in 0 until blockSize) {
                     for (j in 0 until blockSize) {
@@ -161,30 +156,29 @@ class DecryptActivity : AppCompatActivity() {
                     }
                 }
 
-                // Apply inverse DCT to the block
                 val dctCoefficients = performDCT(block)
-
-                // Extract encoded bits from specific DCT coefficients
-                // Example: Use the (1, 1) coefficient for simplicity
-                val bit =
-                    (dctCoefficients[1][1] % 2).toInt() // Retrieve LSB of a chosen coefficient
+                val bit = (dctCoefficients[1][1] % 2).toInt()
                 binaryData.append(bit)
+
+                // Check for termination marker
+                if (binaryData.length % 8 == 0) {
+                    val lastByte = binaryData.substring(binaryData.length - 8, binaryData.length)
+                    if (lastByte == "00000000") break@loop
+                }
             }
         }
 
-        // Convert binary data to string
         val message = StringBuilder()
         for (i in 0 until binaryData.length step 8) {
             val byteStr = binaryData.substring(i, i + 8)
+            if (byteStr == "00000000") break
             val char = byteStr.toInt(2).toChar()
-            if (char == '\u0000') break // Stop if null character is found
             message.append(char)
         }
 
         return message.toString()
     }
 
-    // Perform 2D DCT
     private fun performDCT(block: Array<DoubleArray>): Array<DoubleArray> {
         val N = block.size
         val dctBlock = Array(N) { DoubleArray(N) }
